@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         b.btnRescan.setOnClickListener { service(NexusBleService.ACTION_RESCAN) }
         b.btnSync.setOnClickListener { service(NexusBleService.ACTION_SYNC_TIME) }
         b.btnForget.setOnClickListener { service(NexusBleService.ACTION_FORGET) }
+        b.btnTrips.setOnClickListener { startActivity(Intent(this, TripHistoryActivity::class.java)) }
 
         requestPermsThenStart()
     }

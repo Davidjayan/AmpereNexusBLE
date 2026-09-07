@@ -13,6 +13,7 @@ Built by reverse-engineering the official app's BLE protocol (see `PROTOCOL.md`)
 - Live dashboard: charge %, last trip, range, odometer, speed, mode.
 - Syncs the scooter's real-time clock to your phone time on connect.
 - Raw BLE frame log for debugging / protocol verification.
+- **Trip history** stored locally in SQLite — completed rides (distance, duration, avg/max speed, battery used) recorded automatically.
 
 ## Build
 See **CLAUDE.md** for the full build/install/handoff guide. Quick version:

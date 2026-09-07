@@ -32,6 +32,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".TripHistoryActivity"
+            android:exported="false"
+            android:label="Trip history"/>
+
         <service
             android:name=".NexusBleService"
             android:exported="false"

@@ -33,6 +33,7 @@ class NexusBleService : Service() {
     private val repo = NexusRepository
 
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    private val tripRecorder by lazy { TripRecorder(this) }
 
     // ---- lifecycle ----------------------------------------------------------
     override fun onCreate() {
@@ -155,6 +156,7 @@ class NexusBleService : Service() {
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     repo.state = NexusRepository.State.DISCONNECTED
+                    tripRecorder.onDisconnect()
                     repo.log("Disconnected (status=$status). OS will auto-reconnect when in range.")
                     repo.notifyChanged(); updateNotification()
                     // With autoConnect the OS keeps the pending connection; on hard errors, retry.
@@ -219,6 +221,7 @@ class NexusBleService : Service() {
         val hex = NexusProtocol.toHex(value)
         val id = NexusProtocol.frameId(value)
         NexusProtocol.decode(hex, repo.telemetry)
+        tripRecorder.onTelemetry(repo.telemetry)
         repo.log("RX $id  $hex")
         repo.notifyChanged()
         updateNotification()

@@ -19,6 +19,11 @@ server issue — but the BLE link needs no login, so this app works offline.
 - ✅ Auto-connect: OS-level `autoConnect=true` + Bluetooth-state receiver + boot receiver +
   foreground service. The target scooter MAC is remembered in prefs.
 - ✅ Clock sync: on connect the app writes phone time to the scooter RTC (`0102`+epoch frame).
+- ✅ **Trip history in SQLite** (`nexus_trips.db`, framework `SQLiteOpenHelper`, no external deps).
+  Trips are derived from the live feed — the scooter does NOT send ride history over BLE (the
+  official app got that from its cloud). `TripRecorder`: start on first `speed>0`, accumulate
+  odo/battery/max-speed, finalize on 2-min idle / side-stand / disconnect; trips <50 m discarded.
+  Verified end-to-end (insert → query → render). "View trip history" button → `TripHistoryActivity`.
 - ⚠️ **PENDING live validation:** the scooter was out of range during development, so the
   `0150`/`0254` byte offsets (taken directly from the app's Hermes bytecode) have not yet been
   confirmed against a real frame. When near the scooter, open the app, watch the **RAW BLE LOG**,
@@ -54,6 +59,10 @@ Plain GATT. **No pairing, no bonding, no crypto handshake.** Connect → discove
   on / disconnect; actions RESCAN / SYNC_TIME / FORGET.
 - `MainActivity.kt` — permissions, starts service, renders state, 1s clock ticker.
 - `BootReceiver.kt` — restarts service after reboot / app update.
+- `TripDb.kt` — `SQLiteOpenHelper` for `nexus_trips.db`, table `trips`, `TripRecord`, insert/all/totals.
+- `TripRecorder.kt` — turns the telemetry stream into discrete saved trips (see heuristic above).
+  Fed from `handleValue()`; finalized on GATT disconnect.
+- `TripHistoryActivity.kt` + `activity_trips.xml`/`item_trip.xml` — trip list + totals screen.
 
 ## Build & install (no Android Studio needed)
 Requires Android SDK + a Gradle 8.14 distribution + JDK 17. On the original dev machine:
