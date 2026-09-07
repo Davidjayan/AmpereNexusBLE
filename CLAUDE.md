@@ -37,10 +37,13 @@ server issue — but the BLE link needs no login, so this app works offline.
   *inside* service `20032202` → "Notify characteristic not found" → nothing worked, and the
   clock never synced (sync is gated on the CCCD-write callback). Fixed with `findCharAnywhere()`
   / `findCharByProperty()` in `NexusBleService.kt` — search the whole tree by UUID then by property.
-- ✅ **Scooter clock fix:** the cluster RTC has no timezone; it renders the raw epoch as UTC.
-  The official app (and our old code) sent raw UTC epoch → scooter read 5:30 behind (IST).
-  `NexusProtocol.localClockSeconds()` now shifts by the local UTC offset so the cluster shows
-  correct local wall-clock. Verified: old→15:59, new→21:29 for a 21:29 phone.
+- ✅ **Scooter clock fix (two bugs, live-verified):**
+  1. **Endianness:** the 4 epoch bytes must be **little-endian** (`epochHexLE`). The official app
+     byte-swaps `toString(16)`; our first version sent big-endian → the scooter mis-read it and the
+     clock **jumped hours every power cycle** (16:57→1:59am). LE → stable, correct, persistent.
+  2. **Timezone:** send **raw UTC** epoch (`clockSeconds()` = `now/1000`), NOT a local-shifted one.
+     The cluster firmware adds India +5:30 itself; a local shift made it +5:30 too far (showed 03:17
+     for a 21:47 phone). Raw UTC + scooter's own +5:30 = correct IST. Verified phone 21:49→scooter 21:49.
 - ✅ **Charging sentinel:** `time_to_charge` raw 999 (0x03E7) means "not plugged in"; decode now
   treats only 1..998 as actually charging (killed the false "⚡ 99.9 h to full").
 - ℹ️ **"LAST TRIP" tile = `trip_two`** = the scooter's resettable trip meter (Trip B), byte-faithful
@@ -67,10 +70,10 @@ Plain GATT. **No pairing, no bonding, no crypto handshake.** Connect → discove
   - `0254` status: mode=`b[2]`(1 ECO,2 City,3 Park,else Power); time_to_charge=LE(`b[6..7]`)/10;
     charge_complete=`b[13]`; reverse=`b[15]`; ready=`b[17]`; side_stand=`b[19]`.
   - `0147` call/live-loc, `0551` TPMS — ignored by this app.
-- Set scooter clock: write (to char `20032202`) hex `0102` + `localEpoch.toString(16)` + fixed
-  cluster block + missedCalls(`00`) + `45`, where `localEpoch = (nowMs + tzOffsetMs)/1000` — the
-  cluster RTC has no timezone and renders the number as UTC, so we pre-shift to local wall-clock.
-  (The official app sends raw UTC here, which is why its clock reads 5:30 behind in IST.)
+- Set scooter clock: write (to char `20032202`) hex `0102` + `<epoch, 4 bytes LITTLE-ENDIAN>` +
+  fixed cluster block + missedCalls(`00`) + `45`, where `epoch = System.currentTimeMillis()/1000`
+  (RAW UTC — the cluster firmware adds India +5:30 itself). LE is mandatory (big-endian makes the
+  clock jump hours per power cycle). See PROTOCOL.md "Set clock" for the full derivation.
 - Older Primus/Revos scooters use service `0000a002` / notify `0000c306` / write `0000c304`
   (constants present in `NexusProtocol` for completeness).
 

@@ -211,6 +211,13 @@ class NexusBleService : Service() {
             handler.postDelayed({ syncClock() }, 600)
         }
 
+        override fun onCharacteristicWrite(
+            g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int
+        ) {
+            repo.log("WRITE result ${c.uuid} status=$status " +
+                if (status == BluetoothGatt.GATT_SUCCESS) "(OK)" else "(FAILED)")
+        }
+
         // Android 13+ signature
         override fun onCharacteristicChanged(
             g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray
@@ -276,8 +283,9 @@ class NexusBleService : Service() {
                 BluetoothGattCharacteristic.PROPERTY_WRITE or
                 BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
         if (wc == null) { repo.log("No write characteristic found; cannot sync clock"); return }
-        val payload = NexusProtocol.buildSetTimeCommand()
-        repo.log("TX set-time (${payload.size} bytes) → ${wc.uuid}")
+        val epoch = NexusProtocol.clockSeconds()
+        val payload = NexusProtocol.buildSetTimeCommand(epoch)
+        repo.log("TX set-time (${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}) → ${wc.uuid}")
         if (Build.VERSION.SDK_INT >= 33) {
             g.writeCharacteristic(wc, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
         } else {

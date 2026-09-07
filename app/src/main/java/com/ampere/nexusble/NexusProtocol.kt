@@ -1,6 +1,5 @@
 package com.ampere.nexusble
 
-import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -107,25 +106,38 @@ object NexusProtocol {
     }
 
     /**
-     * Local wall-clock as "epoch" seconds for the scooter RTC.
+     * Epoch seconds for the scooter RTC — RAW UTC, no timezone shift.
      *
-     * The scooter cluster has no timezone concept — it just breaks the number it receives
-     * into Y/M/D H:M:S, which for a true UTC epoch would show UTC (5:30 behind here in IST).
-     * The official app's getTimeHexNXGT() sends raw UTC epoch, which is why the scooter clock
-     * reads wrong. To make the cluster display the correct local wall-clock, we shift the epoch
-     * by the current UTC offset (DST-aware via getOffset), so the calendar breakdown == local time.
+     * Empirically the Nexus cluster firmware applies India time (+5:30) to the epoch itself before
+     * displaying (Ampere is India-only). So we must send plain UTC: the scooter adds 5:30 and shows
+     * correct IST. Sending local-shifted time here made it +5:30 too far ahead (21:47 → showed 03:17).
+     * This matches the official app, which also sends raw floor(Date.now()/1000). The bytes still go
+     * out little-endian — see [epochHexLE].
      */
-    fun localClockSeconds(nowMs: Long = System.currentTimeMillis()): Long {
-        val offsetMs = TimeZone.getDefault().getOffset(nowMs)
-        return (nowMs + offsetMs) / 1000
+    fun clockSeconds(nowMs: Long = System.currentTimeMillis()): Long = nowMs / 1000
+
+    /**
+     * 32-bit epoch as 4 LITTLE-ENDIAN bytes, hex (8 chars).
+     *
+     * The scooter is little-endian (see the LE odo/trip decode), and the official app's
+     * getTimeHexNXGT() byte-swaps toString(16) into little-endian before sending. Sending plain
+     * big-endian toString(16) makes the scooter mis-read the value: the fast-changing low byte
+     * lands in its high byte, so the displayed clock jumps by hours on tiny real changes ("new
+     * time every power cycle"). Emit little-endian so the scooter reconstructs the true epoch.
+     */
+    fun epochHexLE(epochSeconds: Long): String {
+        val v = epochSeconds and 0xFFFFFFFFL
+        return "%02x%02x%02x%02x".format(
+            v and 0xFF, (v shr 8) and 0xFF, (v shr 16) and 0xFF, (v shr 24) and 0xFF
+        )
     }
 
     /**
      * Build the "set scooter clock" write (Nexus / writeTimetoCluster).
-     * `0102` + local-wall-clock-seconds-hex + static cluster block + missedCalls(00) + `45`.
+     * `0102` + local-wall-clock-seconds (little-endian hex) + static cluster block + missedCalls(00) + `45`.
      */
-    fun buildSetTimeCommand(epochSeconds: Long = localClockSeconds()): ByteArray {
-        val epochHex = epochSeconds.toString(16)
+    fun buildSetTimeCommand(epochSeconds: Long = clockSeconds()): ByteArray {
+        val epochHex = epochHexLE(epochSeconds)
         val staticBlock =
             "40FF4100000000420000000043FF02FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" +
             "03FFFFFFFFFFFFFFFFFFFFFFFF49FF4FFF44FFFF04FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" +

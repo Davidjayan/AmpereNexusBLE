@@ -68,12 +68,18 @@ Sample live frames: `0150 01502A51C63F000052B5185525570058005900FF`,
 ## Writes (hex → bytes → base64 → write char)
 Command families (Nexus, header echoed in response):
 - **Set clock / cluster tick** (`writeTimetoCluster`, nexus) — written to char `20032202`:
-  `0102` + `<epochHex>` + `40FF4100000000420000000043FF02FF…4D034E` + <missedCalls> + `45`.
-  - The official app's `getTimeHexNXGT()` = `Math.floor(Date.now()/1000).toString(16)` = **raw UTC**
-    epoch. The cluster RTC has **no timezone** and renders the number as UTC, so the official app's
-    clock reads 5:30 behind in IST. ✅ **Our fix:** send **local** epoch =
-    `(System.currentTimeMillis() + TimeZone.getDefault().getOffset(now)) / 1000` so the cluster's
-    UTC breakdown equals local wall-clock. Verified: raw-UTC→15:59 vs local→21:29 for a 21:29 phone.
+  `0102` + `<epoch, 4 bytes LITTLE-ENDIAN, hex>` + `40FF4100000000420000000043FF02FF…4D034E`
+  + <missedCalls `00`> + `45`. Two things that MUST be right (both live-verified 2026-09-07):
+  1. **Endianness — little-endian.** The official app's `getTimeHexNXGT()` = `floor(Date.now()/1000)`
+     then `.toString(16)` **byte-swapped to little-endian** (its char-index reassembly order is
+     6,7,4,5,2,3,0,1). The scooter reads the 4 time bytes little-endian (same as its LE telemetry).
+     Sending big-endian `toString(16)` makes the fast low byte land in the scooter's high byte, so
+     the clock **jumps by hours on each power cycle** (observed 16:57→1:59am). Emit LE (`epochHexLE`).
+  2. **Timezone — send RAW UTC, no shift.** The cluster firmware adds **India +5:30 itself** before
+     display (Ampere is India-only). Send plain `System.currentTimeMillis()/1000`; the scooter adds
+     5:30 and shows correct IST. (A local-shifted epoch showed +5:30 too far ahead: 21:47→03:17.)
+  - Net: send LE bytes of raw UTC epoch → scooter reconstructs UTC, adds 5:30, displays local IST.
+    Verified: phone 21:49 → scooter 21:49. Value is stable and persists across power cycles.
   Primus clock: `659B65000000` + `getHexTime()` + `000000`, `getHexTime()`=`HHmm00` (hex of decimal H/M).
 - VIN read `01102E0110…`, profile name `01122E0112…`, family DOB `01132E0113…`, cricket `01142F0114…`,
   song/album framed with `084A00004B00004C`. These push text to the scooter's cluster display.
