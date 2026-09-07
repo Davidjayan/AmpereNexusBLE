@@ -110,3 +110,20 @@ write required to read charge/trip/range.
   **phone-screen navigation in the app** (independent of the scooter). Sending road-name/distance text
   to the EX cluster *might* surface something if the EX has a nav text field, but that's marginal and
   not the arrow experience.
+
+## Sound / alerts / call display on the EX — findings (2026-09-07, live-tested)
+- **No BLE way to make the scooter beep.** There is no horn/buzzer BLE command. The official
+  "Ping my scooter" (which beeps + locates) is a **cloud** call (`dashboard-details/…-magnus`,
+  routed to the vehicle over its cellular telematics), not Bluetooth.
+- **Call-notification frame works, but the EX shows only an icon + timer.** The cluster call frame is
+  `0102` + epoch(LE) + static + `44` + callerName + `4D` + callStatus + `4E` + missedCalls + `45`,
+  where `getCallerName(name)` = `hex(name).padEnd(48,'F')` split as `[0,4)`+`04`+`[4,42)`+`05`+`[42,48)`,
+  and `getCallStatus` maps Android call state → `00`=idle, `01`=ringing, `02`/`03`=off-hook/connected.
+  Sending it is accepted (WRITE OK) and the **EX cluster renders a call icon + a running timer** —
+  but it does **NOT display the caller name** (no text field on the basic EX display; that's ST-only)
+  and plays **no sound** on any status. So call/notification forwarding to the EX can only show a
+  generic "a call is happening" indicator — not who, not audible. Feature was built end-to-end
+  (NotificationListenerService → BLE) then removed as not worth it on the EX.
+- **Scooter GPS is cellular, not BLE.** The Nexus has an onboard telematics unit (IMEI/SIM + GPS):
+  `…telematics?imei=`, `geofence-mqtt/geofence-events?vin=`, find-my-scooter returns lat/lng from the
+  cloud. None of it comes over BLE — the BLE parser has no lat/lng. Offline app can't read location.

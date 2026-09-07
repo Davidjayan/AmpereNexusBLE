@@ -274,18 +274,19 @@ class NexusBleService : Service() {
         updateNotification()
     }
 
-    // ---- write: set scooter clock ------------------------------------------
-    private fun syncClock() {
-        val g = gatt ?: return
-        val wc = findCharAnywhere(g, NexusProtocol.CHAR_WRITE)
+    // ---- write helpers ------------------------------------------------------
+    private fun writeChar(): BluetoothGattCharacteristic? {
+        val g = gatt ?: return null
+        return findCharAnywhere(g, NexusProtocol.CHAR_WRITE)
             ?: findCharAnywhere(g, NexusProtocol.CHAR_PRIMUS_WRITE)
             ?: findCharByProperty(g,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or
                 BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
-        if (wc == null) { repo.log("No write characteristic found; cannot sync clock"); return }
-        val epoch = NexusProtocol.clockSeconds()
-        val payload = NexusProtocol.buildSetTimeCommand(epoch)
-        repo.log("TX set-time (${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}) → ${wc.uuid}")
+    }
+
+    private fun writePayload(payload: ByteArray) {
+        val g = gatt ?: return
+        val wc = writeChar() ?: return
         if (Build.VERSION.SDK_INT >= 33) {
             g.writeCharacteristic(wc, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
         } else {
@@ -294,6 +295,12 @@ class NexusBleService : Service() {
             @Suppress("DEPRECATION") wc.value = payload
             @Suppress("DEPRECATION") g.writeCharacteristic(wc)
         }
+    }
+
+    private fun syncClock() {
+        if (writeChar() == null) { repo.log("No write characteristic found; cannot sync clock"); return }
+        repo.log("TX set-time (${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())})")
+        writePayload(NexusProtocol.buildSetTimeCommand())
     }
 
     // ---- BT on/off receiver -------------------------------------------------
