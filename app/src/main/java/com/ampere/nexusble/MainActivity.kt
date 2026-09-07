@@ -89,6 +89,22 @@ class MainActivity : AppCompatActivity() {
         repo.addListener(listener)
         ticker.post(tick)
         render()
+        loadLastRide()
+    }
+
+    /** Most recent recorded ride comes from SQLite; read it off the main thread. */
+    private fun loadLastRide() {
+        Thread {
+            val db = TripDb(this)
+            val t = runCatching { db.latest() }.getOrNull()
+            db.close()
+            val text = if (t != null) {
+                val date = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(t.startTime))
+                "Last ride: %.1f km · %s".format(t.distanceKm, date)
+            } else ""
+            runOnUiThread { b.tvLastRide.text = text; b.tvLastRide.visibility =
+                if (text.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
+        }.start()
     }
 
     override fun onPause() {

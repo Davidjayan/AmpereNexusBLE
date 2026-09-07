@@ -93,6 +93,25 @@ class TripDb(context: Context) : SQLiteOpenHelper(context.applicationContext, DB
         return out
     }
 
+    /** Most recent recorded ride, or null if none yet. */
+    fun latest(): TripRecord? =
+        readableDatabase.rawQuery("SELECT * FROM $TABLE ORDER BY start_time DESC LIMIT 1", null).use { c ->
+            if (!c.moveToFirst()) return null
+            TripRecord(
+                id = c.getLong(c.getColumnIndexOrThrow("id")),
+                startTime = c.getLong(c.getColumnIndexOrThrow("start_time")),
+                endTime = c.getLong(c.getColumnIndexOrThrow("end_time")),
+                distanceKm = c.getDouble(c.getColumnIndexOrThrow("distance_km")),
+                startOdoKm = c.getDouble(c.getColumnIndexOrThrow("start_odo_km")),
+                endOdoKm = c.getDouble(c.getColumnIndexOrThrow("end_odo_km")),
+                startBatt = c.getInt(c.getColumnIndexOrThrow("start_batt")),
+                endBatt = c.getInt(c.getColumnIndexOrThrow("end_batt")),
+                maxSpeed = c.getInt(c.getColumnIndexOrThrow("max_speed")),
+                avgSpeed = c.getDouble(c.getColumnIndexOrThrow("avg_speed")),
+                durationSec = c.getLong(c.getColumnIndexOrThrow("duration_sec"))
+            )
+        }
+
     /** Pair(count, totalKm). */
     fun totals(): Pair<Int, Double> {
         readableDatabase.rawQuery(
