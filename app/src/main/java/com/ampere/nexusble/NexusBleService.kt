@@ -174,16 +174,22 @@ class NexusBleService : Service() {
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) { repo.log("Service discovery failed $status"); return }
-            val svc = g.getService(NexusProtocol.SERVICE_TELEMETRY)
-                ?: g.getService(NexusProtocol.SERVICE_PRIMUS)
-            if (svc == null) {
-                repo.log("Telemetry service not found. Services: " +
-                        g.services.joinToString { it.uuid.toString() })
+
+            dumpGatt(g)
+
+            // Find the notify characteristic anywhere in the GATT tree: prefer the known UUIDs,
+            // otherwise fall back to the first characteristic that supports NOTIFY/INDICATE.
+            val notifyChar =
+                findCharAnywhere(g, NexusProtocol.CHAR_NOTIFY)
+                    ?: findCharAnywhere(g, NexusProtocol.CHAR_PRIMUS_NOTIFY)
+                    ?: findCharByProperty(g,
+                        BluetoothGattCharacteristic.PROPERTY_NOTIFY or
+                        BluetoothGattCharacteristic.PROPERTY_INDICATE)
+            if (notifyChar == null) {
+                repo.log("No notify characteristic found in any service")
                 return
             }
-            val notifyChar = svc.getCharacteristic(NexusProtocol.CHAR_NOTIFY)
-                ?: svc.getCharacteristic(NexusProtocol.CHAR_PRIMUS_NOTIFY)
-            if (notifyChar == null) { repo.log("Notify characteristic not found"); return }
+            repo.log("Using notify char ${notifyChar.uuid} (svc ${notifyChar.service.uuid})")
             g.setCharacteristicNotification(notifyChar, true)
             val cccd = notifyChar.getDescriptor(NexusProtocol.CCCD)
             if (cccd != null) {
@@ -216,6 +222,40 @@ class NexusBleService : Service() {
         }
     }
 
+    // ---- GATT tree helpers --------------------------------------------------
+    /** Log every service, characteristic and its properties (one-time diagnostic). */
+    private fun dumpGatt(g: BluetoothGatt) {
+        repo.log("── GATT dump: ${g.services.size} services ──")
+        for (s in g.services) {
+            repo.log("SVC ${s.uuid}")
+            for (c in s.characteristics) {
+                repo.log("  CHR ${c.uuid} [${propLabel(c.properties)}]")
+            }
+        }
+        repo.log("── end GATT dump ──")
+    }
+
+    private fun propLabel(p: Int): String {
+        val out = mutableListOf<String>()
+        if (p and BluetoothGattCharacteristic.PROPERTY_READ != 0) out += "R"
+        if (p and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) out += "W"
+        if (p and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0) out += "Wn"
+        if (p and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) out += "N"
+        if (p and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) out += "I"
+        return out.joinToString("/")
+    }
+
+    private fun findCharAnywhere(g: BluetoothGatt, uuid: java.util.UUID): BluetoothGattCharacteristic? {
+        for (s in g.services) s.getCharacteristic(uuid)?.let { return it }
+        return null
+    }
+
+    private fun findCharByProperty(g: BluetoothGatt, propMask: Int): BluetoothGattCharacteristic? {
+        for (s in g.services) for (c in s.characteristics)
+            if (c.properties and propMask != 0) return c
+        return null
+    }
+
     private fun handleValue(value: ByteArray) {
         if (value.isEmpty()) return
         val hex = NexusProtocol.toHex(value)
@@ -230,10 +270,14 @@ class NexusBleService : Service() {
     // ---- write: set scooter clock ------------------------------------------
     private fun syncClock() {
         val g = gatt ?: return
-        val svc = g.getService(NexusProtocol.SERVICE_TELEMETRY) ?: return
-        val wc = svc.getCharacteristic(NexusProtocol.CHAR_WRITE) ?: return
+        val wc = findCharAnywhere(g, NexusProtocol.CHAR_WRITE)
+            ?: findCharAnywhere(g, NexusProtocol.CHAR_PRIMUS_WRITE)
+            ?: findCharByProperty(g,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
+        if (wc == null) { repo.log("No write characteristic found; cannot sync clock"); return }
         val payload = NexusProtocol.buildSetTimeCommand()
-        repo.log("TX set-time (${payload.size} bytes)")
+        repo.log("TX set-time (${payload.size} bytes) → ${wc.uuid}")
         if (Build.VERSION.SDK_INT >= 33) {
             g.writeCharacteristic(wc, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
         } else {

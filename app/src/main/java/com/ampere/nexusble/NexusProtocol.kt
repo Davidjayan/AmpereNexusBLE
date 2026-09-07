@@ -1,5 +1,6 @@
 package com.ampere.nexusble
 
+import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -8,8 +9,14 @@ import java.util.UUID
  */
 object NexusProtocol {
 
-    // Telemetry service: scooter pushes 0150/0254 notifications here after subscribe.
-    val SERVICE_TELEMETRY: UUID = UUID.fromString("20032202-1234-1234-1234-220201042403")
+    // Real GATT layout on the Nexus (verified live): each service holds ONE characteristic
+    // whose UUID equals the service UUID. They are NOT nested under a single service — the
+    // service is found via findCharAnywhere() across the whole tree, so grouping is irrelevant.
+    //   20012202 [R/N]   — telemetry notify: scooter pushes 0150/0254 frames here after subscribe
+    //   20032202 [W/N]   — write: clock / cluster writes (set-time frame)
+    //   20022202 [R/W/N] — secondary cluster (name/DOB writes)
+    //   20042202 [R/W/N] — fourth service (unused so far)
+    val SERVICE_TELEMETRY: UUID = UUID.fromString("20012202-1234-1234-1234-220201042403")
     val CHAR_NOTIFY: UUID       = UUID.fromString("20012202-1234-1234-1234-220201042403")
     val CHAR_WRITE: UUID        = UUID.fromString("20032202-1234-1234-1234-220201042403")
 
@@ -82,12 +89,15 @@ object NexusProtocol {
             "0254" -> {   // status / charging
                 t.mode = when (u(b, 2)) { 1 -> "ECO"; 2 -> "City"; 3 -> "Park"; else -> "Power" }
                 t.limpHome       = u(b, 4)
-                t.timeToChargeHr = le(b, 6, 8) / 10.0
+                // time-to-charge is tenths of an hour; 999 (0x03E7) is the "not charging / N/A"
+                // sentinel the cluster sends when nothing is plugged in.
+                val ttcRaw       = le(b, 6, 8)
+                t.timeToChargeHr = ttcRaw / 10.0
                 t.chargeComplete = u(b, 13)
                 t.reverseGear    = u(b, 15)
                 t.ready          = u(b, 17)
                 t.sideStand      = u(b, 19)
-                t.charging       = t.timeToChargeHr > 0.0 && t.chargeComplete == 0
+                t.charging       = ttcRaw in 1..998 && t.chargeComplete == 0
                 t.lastStatusFrame = hex.uppercase()
             }
             // 0147 (call/live-loc) and 0551 (TPMS) are ignored for the dashboard.
@@ -97,10 +107,24 @@ object NexusProtocol {
     }
 
     /**
-     * Build the "set scooter clock" write (Nexus / writeTimetoCluster).
-     * `0102` + unix-epoch-seconds-hex + static cluster block + missedCalls(00) + `45`.
+     * Local wall-clock as "epoch" seconds for the scooter RTC.
+     *
+     * The scooter cluster has no timezone concept — it just breaks the number it receives
+     * into Y/M/D H:M:S, which for a true UTC epoch would show UTC (5:30 behind here in IST).
+     * The official app's getTimeHexNXGT() sends raw UTC epoch, which is why the scooter clock
+     * reads wrong. To make the cluster display the correct local wall-clock, we shift the epoch
+     * by the current UTC offset (DST-aware via getOffset), so the calendar breakdown == local time.
      */
-    fun buildSetTimeCommand(epochSeconds: Long = System.currentTimeMillis() / 1000): ByteArray {
+    fun localClockSeconds(nowMs: Long = System.currentTimeMillis()): Long {
+        val offsetMs = TimeZone.getDefault().getOffset(nowMs)
+        return (nowMs + offsetMs) / 1000
+    }
+
+    /**
+     * Build the "set scooter clock" write (Nexus / writeTimetoCluster).
+     * `0102` + local-wall-clock-seconds-hex + static cluster block + missedCalls(00) + `45`.
+     */
+    fun buildSetTimeCommand(epochSeconds: Long = localClockSeconds()): ByteArray {
         val epochHex = epochSeconds.toString(16)
         val staticBlock =
             "40FF4100000000420000000043FF02FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" +

@@ -24,11 +24,28 @@ server issue — but the BLE link needs no login, so this app works offline.
   official app got that from its cloud). `TripRecorder`: start on first `speed>0`, accumulate
   odo/battery/max-speed, finalize on 2-min idle / side-stand / disconnect; trips <50 m discarded.
   Verified end-to-end (insert → query → render). "View trip history" button → `TripHistoryActivity`.
-- ⚠️ **PENDING live validation:** the scooter was out of range during development, so the
-  `0150`/`0254` byte offsets (taken directly from the app's Hermes bytecode) have not yet been
-  confirmed against a real frame. When near the scooter, open the app, watch the **RAW BLE LOG**,
-  and compare decoded values to the scooter's own display. If a field is off, adjust the index in
-  `NexusProtocol.decode()`. Ask the user to paste a couple of `RX 0150 …` / `RX 0254 …` lines.
+- ✅ **LIVE-VALIDATED (2026-09-07)** against the real scooter. Confirmed frames:
+  `RX 0150 01502A51C63F000052B5185525570058005900FF` → battery 42%, odo 1632.6 km,
+  trip_two 632.5 km, range 37, speed 0. `RX 0254 025400600061E703620063006400650066006701`
+  → mode Power, side_stand 1, time_to_charge raw 0x03E7=999 (the "not charging" sentinel).
+  The `0150`/`0254` offsets from the bytecode are correct — they land exactly on the data bytes
+  between the frame's marker bytes (0150 markers 51/52/55/57/58/59/FF; 0254 markers 60..67).
+- ✅ **Real GATT layout discovered live** (this was the big bug). Each service holds ONE
+  characteristic whose UUID == the service UUID; they are NOT nested under one service:
+  `20012202 [R/N]` = telemetry notify · `20032202 [W/N]` = write (clock) ·
+  `20022202 [R/W/N]` · `20042202 [R/W/N]`. The old code looked for notify char `20012202`
+  *inside* service `20032202` → "Notify characteristic not found" → nothing worked, and the
+  clock never synced (sync is gated on the CCCD-write callback). Fixed with `findCharAnywhere()`
+  / `findCharByProperty()` in `NexusBleService.kt` — search the whole tree by UUID then by property.
+- ✅ **Scooter clock fix:** the cluster RTC has no timezone; it renders the raw epoch as UTC.
+  The official app (and our old code) sent raw UTC epoch → scooter read 5:30 behind (IST).
+  `NexusProtocol.localClockSeconds()` now shifts by the local UTC offset so the cluster shows
+  correct local wall-clock. Verified: old→15:59, new→21:29 for a 21:29 phone.
+- ✅ **Charging sentinel:** `time_to_charge` raw 999 (0x03E7) means "not plugged in"; decode now
+  treats only 1..998 as actually charging (killed the false "⚡ 99.9 h to full").
+- ℹ️ **"LAST TRIP" tile = `trip_two`** = the scooter's resettable trip meter (Trip B), byte-faithful
+  to the official app — NOT a single most-recent-ride distance. True per-ride distances are what the
+  app's own `TripRecorder`/SQLite derives. 632.5 km here is the accumulated trip meter, not a bug.
 
 ## The scooter (this user's unit)
 - BLE name: `NEX_Bca22`  ·  MAC: `48:23:35:99:CA:22`  (name match keyword: contains "nex")
@@ -37,17 +54,23 @@ server issue — but the BLE link needs no login, so this app works offline.
 
 ## Protocol (summary — full detail in PROTOCOL.md)
 Plain GATT. **No pairing, no bonding, no crypto handshake.** Connect → discover → subscribe.
-- Telemetry service `20032202-1234-1234-1234-220201042403`
-  - notify char `20012202-…` (scooter pushes frames here after you subscribe)
-  - write char  `20032202-…` (clock / cluster writes)
-- 2nd cluster service `20022202-…` (name/DOB writes; not needed for core features).
+- **Real layout (live-verified):** four vendor services, each with ONE char of the same UUID:
+  - `20012202-…` **[R/N]** — notify char (scooter pushes 0150/0254 frames here after subscribe)
+  - `20032202-…` **[W/N]** — write char (clock / cluster writes)
+  - `20022202-…` **[R/W/N]** — 2nd cluster (name/DOB writes; not needed for core features)
+  - `20042202-…` **[R/W/N]** — unused so far
+  The chars are in their OWN services, not nested — always resolve by searching the whole tree
+  (`findCharAnywhere`), never `service.getCharacteristic()` under one assumed service.
 - Notification value = raw bytes → uppercase hex → `b = split into byte pairs`. Frame id = `b[0]b[1]`.
   - `0150` dashboard: charge%=`b[2]`; odo=LE(`b[4..7]`)/10; **last trip=LE(`b[9..10]`)/10**;
     range=`b[12]`; speed=`b[14]`; top_speed=`b[16]`; avg_speed=`b[18]`.
   - `0254` status: mode=`b[2]`(1 ECO,2 City,3 Park,else Power); time_to_charge=LE(`b[6..7]`)/10;
     charge_complete=`b[13]`; reverse=`b[15]`; ready=`b[17]`; side_stand=`b[19]`.
   - `0147` call/live-loc, `0551` TPMS — ignored by this app.
-- Set scooter clock: write hex `0102` + `floor(now/1000).toString(16)` + fixed cluster block + `45`.
+- Set scooter clock: write (to char `20032202`) hex `0102` + `localEpoch.toString(16)` + fixed
+  cluster block + missedCalls(`00`) + `45`, where `localEpoch = (nowMs + tzOffsetMs)/1000` — the
+  cluster RTC has no timezone and renders the number as UTC, so we pre-shift to local wall-clock.
+  (The official app sends raw UTC here, which is why its clock reads 5:30 behind in IST.)
 - Older Primus/Revos scooters use service `0000a002` / notify `0000c306` / write `0000c304`
   (constants present in `NexusProtocol` for completeness).
 
