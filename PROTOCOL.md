@@ -55,3 +55,23 @@ Command families (Nexus, header echoed in response):
 
 Telemetry (`0150`/`0254`) is **pushed automatically by the scooter once you subscribe** — no request
 write required to read charge/trip/range.
+
+## Turn-by-turn navigation (ST vs EX) — feasibility analysis
+- The app chooses the nav encoder by **model family only**: `['nexus','magnus','magnus_grand']`
+  → `getDirectionNXGT`, else `getDirection`. **There is no ST-vs-EX branch** — both are "nexus",
+  so the app builds the identical nav payload for either.
+- Maneuver → direction code (`getDirectionNXGT`): `01`=right, `02`=left, `03`=slight-right/merge,
+  `04`=slight-left, `05`=other; plus `leftDistance` (m to next turn). Stored as `currentTBTStep`.
+- **BUT the rich ST map/TBT is rendered on the ST's smart touchscreen cluster over WiFi, not BLE:**
+  the phone raises a **personal hotspot**, shares SSID/PWD with the cluster (`hotspotSSID/PWD`,
+  `getHotspotCredentials`), and serves the map + TBT via a **local web server (lighttpd) + WebSocket**
+  (`startServer`/`stopServer`, `addWebSocketHandler`, `getNavDevice`, `127.0.0.1`). Mappls SDK draws
+  the map. The cluster sends taps back (`mapViewControl`, `isLiveLocationPressed` in the 0147/0150 RX).
+- BLE only carries the lightweight cluster frame (time, missed calls, and TLV slots incl. a
+  direction/distance field 0x44/0x49/0x4F in the `0102`-style write).
+- **Conclusion:** the full ST navigation experience depends on the smart cluster's WiFi + graphical
+  map engine, which the EX (non-touch basic display, BLE-only) does not have — so it can't be
+  "unlocked" by software alone. The only EX possibility is a **minimal arrow+distance** IF the EX
+  firmware/display renders the BLE direction field — unknown from the app, empirically testable by
+  writing the direction byte to the EX cluster and observing the display. Phone-screen TBT (arrows on
+  the phone) is always possible independent of the scooter.
