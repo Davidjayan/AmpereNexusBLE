@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
+        android:clipToPadding="false">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Ampere Nexus" android:textColor="@color/text"
+            android:textSize="26sp" android:textStyle="bold"/>
+
+        <TextView android:id="@+id/tvStatus" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="Idle"
+            android:textColor="@color/accent" android:textSize="15sp"
+            android:layout_marginTop="2dp"/>
+        <TextView android:id="@+id/tvDevice" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text=""
+            android:textColor="@color/textDim" android:textSize="12sp"/>
+
+        <!-- Battery -->
+        <LinearLayout style="@style/Card" android:orientation="vertical">
+            <TextView style="@style/Label" android:text="CHARGE"/>
+            <TextView android:id="@+id/tvBattery" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="-- %"
+                android:textColor="@color/text" android:textSize="48sp" android:textStyle="bold"/>
+            <ProgressBar android:id="@+id/pbBattery" style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent" android:layout_height="10dp"
+                android:max="100" android:progress="0" android:layout_marginTop="6dp"/>
+            <TextView android:id="@+id/tvCharging" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text=""
+                android:textColor="@color/accent" android:textSize="13sp" android:layout_marginTop="4dp"/>
+        </LinearLayout>
+
+        <!-- Trip / Range / Odo -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="12dp" android:weightSum="3">
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="LAST TRIP"/>
+                <TextView android:id="@+id/tvTrip" style="@style/Big" android:text="--"/>
+                <TextView style="@style/Unit" android:text="km"/>
+            </LinearLayout>
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="RANGE"/>
+                <TextView android:id="@+id/tvRange" style="@style/Big" android:text="--"/>
+                <TextView style="@style/Unit" android:text="km"/>
+            </LinearLayout>
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="ODOMETER"/>
+                <TextView android:id="@+id/tvOdo" style="@style/Big" android:text="--"/>
+                <TextView style="@style/Unit" android:text="km"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Speed / Mode / Clock -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="12dp" android:weightSum="3">
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="SPEED"/>
+                <TextView android:id="@+id/tvSpeed" style="@style/Big" android:text="0"/>
+                <TextView style="@style/Unit" android:text="km/h"/>
+            </LinearLayout>
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="MODE"/>
+                <TextView android:id="@+id/tvMode" style="@style/Big" android:text="--" android:textSize="22sp"/>
+                <TextView android:id="@+id/tvReady" style="@style/Unit" android:text=""/>
+            </LinearLayout>
+            <LinearLayout style="@style/Tile" android:layout_weight="1">
+                <TextView style="@style/Label" android:text="SCOOTER TIME"/>
+                <TextView android:id="@+id/tvClock" style="@style/Big" android:text="--:--:--"
+                    android:maxLines="1" android:ellipsize="none"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="14sp" android:autoSizeMaxTextSize="22sp"
+                    android:fontFeatureSettings="tnum" android:typeface="monospace"/>
+                <TextView android:id="@+id/tvDate" style="@style/Unit" android:text=""/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- buttons -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="14dp">
+            <Button android:id="@+id/btnRescan" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:layout_marginEnd="6dp"
+                android:insetLeft="0dp" android:insetRight="0dp" android:text="Rescan"/>
+            <Button android:id="@+id/btnSync" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp" android:insetLeft="0dp" android:insetRight="0dp"
+                android:text="Sync time"/>
+            <Button android:id="@+id/btnForget" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                android:insetLeft="0dp" android:insetRight="0dp" android:text="Forget"/>
+        </LinearLayout>
+
+        <TextView style="@style/Label" android:text="RAW BLE LOG" android:layout_marginTop="10dp"/>
+        <TextView android:id="@+id/tvLog" android:layout_width="match_parent"
+            android:layout_height="220dp" android:background="@color/card"
+            android:fontFamily="monospace" android:textColor="@color/textDim"
+            android:textSize="10sp" android:padding="8dp" android:layout_marginTop="4dp"
+            android:scrollbars="vertical"/>
+    </LinearLayout>
+</ScrollView>
